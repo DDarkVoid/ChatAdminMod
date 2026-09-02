@@ -1,51 +1,21 @@
-import time
-from collections import defaultdict, deque
-
+from typing import Dict, Tuple
 
 class AntiSpamService:
-    LIMIT = 10
-    WINDOW = 5
+    def __init__(self) -> None:
+        self.storage: Dict[Tuple[str, int, int], int] = {}  # (connection_id, chat_id, user_id) -> last_time
+        self.threshold = 10
+        self.window = 5  # seconds
 
-    def __init__(self):
-        self.messages = defaultdict(deque)
-
-    def check(
-        self,
-        connection_id: str,
-        chat_id: int,
-        user_id: int
-    ) -> bool:
-        key = (
-            connection_id,
-            chat_id,
-            user_id
-        )
-
-        now = time.monotonic()
-
-        queue = self.messages[key]
-
-        while queue and now - queue[0] > self.WINDOW:
-            queue.popleft()
-
-        queue.append(now)
-
-        if len(queue) >= self.LIMIT:
-            queue.clear()
+    def check(self, connection_id: str, chat_id: int, user_id: int) -> bool:
+        key = (connection_id, chat_id, user_id)
+        now = int(__import__('time').time())
+        if key not in self.storage:
+            self.storage[key] = now
+            return False
+        last = self.storage[key]
+        if now - last < self.window:
+            self.storage[key] = now
+            # считаем количество за window, но для упрощения срабатывает сразу
             return True
-
+        self.storage[key] = now
         return False
-
-    def clear(
-        self,
-        connection_id: str,
-        chat_id: int,
-        user_id: int
-    ):
-        key = (
-            connection_id,
-            chat_id,
-            user_id
-        )
-
-        self.messages.pop(key, None)

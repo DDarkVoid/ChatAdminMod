@@ -3,16 +3,11 @@ import logging
 
 from app.bot import bot, dp
 
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
 
-async def main():
+async def main() -> None:
     print("Бот запускается, один момент!")
-
     await dp.start_polling(bot)
 
 
