@@ -4,34 +4,52 @@ import logging
 
 from aiogram import Bot
 from aiogram.methods import DeleteBusinessMessages
-from aiogram.types import BusinessBotRights, BusinessConnection, Message
+from aiogram.types import BusinessBotRights, BusinessConnection
 
-from app.database.database import Database
+from app.database.database import BusinessConnectionData, Database
 from app.services.antispam_service import AntiSpamService
 
 logger = logging.getLogger(__name__)
 
-RIGHTS_MAP = (
-    ('can_reply', 'reply'),
-    ('can_read_messages', 'read_messages'),
-    ('can_delete_sent_messages', 'delete_sent_messages'),
-    ('can_delete_all_messages', 'delete_all_messages'),
-)
 
+def get_rights_map(rights: BusinessBotRights | None) -> dict[str, bool]:
+    """Extract rights as a dictionary."""
+    if rights is None:
+        return {
+            'reply': False,
+            'read_messages': False,
+            'delete_sent_messages': False,
+            'delete_all_messages': False,
+        }
 
-def get_right(rights: BusinessBotRights | None, name: str) -> bool:
-    """Check if right exists."""
-    return bool(getattr(rights, name, False))
+    return {
+        'reply': bool(rights.can_reply),
+        'read_messages': bool(rights.can_read_messages),
+        'delete_sent_messages': bool(rights.can_delete_sent_messages),
+        'delete_all_messages': bool(rights.can_delete_all_messages),
+    }
 
 
 def get_missing_rights(connection: BusinessConnection) -> list[str]:
     """Get list of missing rights."""
-    rights = connection.rights
-    return [
-        label
-        for attr, label in RIGHTS_MAP
-        if not get_right(rights, attr)
-    ]
+    rights_map = get_rights_map(connection.rights)
+    return [name for name, granted in rights_map.items() if not granted]
+
+
+def save_connection(database: Database, connection: BusinessConnection) -> None:
+    """Save business connection data."""
+    rights_map = get_rights_map(connection.rights)
+    connection_data = BusinessConnectionData(
+        connection_id=connection.id,
+        user_id=connection.user.id,
+        user_chat_id=connection.user_chat_id,
+        is_enabled=connection.is_enabled,
+        can_reply=rights_map['reply'],
+        can_read_messages=rights_map['read_messages'],
+        can_delete_sent_messages=rights_map['delete_sent_messages'],
+        can_delete_all_messages=rights_map['delete_all_messages'],
+    )
+    database.business.save(connection_data)
 
 
 async def get_connection(
@@ -96,17 +114,5 @@ async def delete_command(
         logger.error(
             '[BUSINESS] Failed to delete command: {0}'.format(
                 delete_error,
-            ),
-        )
-
-
-async def send_business_text(message: Message, text: str) -> None:
-    """Send reply in business chat."""
-    try:
-        await message.answer(text)
-    except Exception as send_error:
-        logger.error(
-            '[BUSINESS] Failed to send reply: {0}'.format(
-                send_error,
             ),
         )

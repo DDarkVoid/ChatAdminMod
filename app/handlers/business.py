@@ -5,14 +5,14 @@ import logging
 from aiogram import Bot, Router
 from aiogram.types import BusinessConnection, Message
 
-from app.database.database import BusinessConnectionData, Database
+from app.database.database import Database
 from app.handlers.business_commands import BusinessCommandHandler
 from app.handlers.business_helpers import (
     delete_message,
     get_connection,
     get_missing_rights,
-    get_right,
     is_antispam_message,
+    save_connection,
 )
 from app.services.antispam_service import AntiSpamService
 from app.services.mute_service import MuteService
@@ -64,28 +64,6 @@ def _connection_text(has_missing_rights: bool, language: str | None) -> str:
     )
 
 
-def _save_connection(connection: BusinessConnection) -> None:
-    """Save business connection data."""
-    rights = connection.rights
-    connection_data = BusinessConnectionData(
-        connection_id=connection.id,
-        user_id=connection.user.id,
-        user_chat_id=connection.user_chat_id,
-        is_enabled=connection.is_enabled,
-        can_reply=get_right(rights, 'can_reply'),
-        can_read_messages=get_right(rights, 'can_read_messages'),
-        can_delete_sent_messages=get_right(
-            rights,
-            'can_delete_sent_messages',
-        ),
-        can_delete_all_messages=get_right(
-            rights,
-            'can_delete_all_messages',
-        ),
-    )
-    db.business.save(connection_data)
-
-
 async def _safe_send_connection_message(
     bot: Bot,
     connection: BusinessConnection,
@@ -100,7 +78,7 @@ async def _safe_send_connection_message(
         )
     except Exception as send_error:
         logger.error(
-            '[BUSINESS] Не удалось отправить сообщение: {0}'.format(
+            '[BUSINESS] Failed to send message: {0}'.format(
                 send_error,
             ),
         )
@@ -117,7 +95,7 @@ async def _safe_delete_and_log(
         await delete_message(bot, connection_id, message_id)
     except Exception as delete_error:
         logger.error(
-            '[MUTE] Не удалось удалить message {0}: {1}'.format(
+            '[MUTE] Failed to delete message {0}: {1}'.format(
                 message_id,
                 delete_error,
             ),
@@ -147,7 +125,7 @@ async def _process_antispam(
         await delete_message(bot, connection_id, message_id)
     except Exception as antispam_error:
         logger.error(
-            '[ANTISPAM] Ошибка обработки: {0}'.format(antispam_error),
+            '[ANTISPAM] Processing error: {0}'.format(antispam_error),
         )
         return
 
@@ -162,7 +140,7 @@ async def handle_business_connection(
     bot: Bot,
 ) -> None:
     """Handle a new business connection."""
-    _save_connection(connection)
+    save_connection(db, connection)
     missing_rights = get_missing_rights(connection)
     logger.info('[BUSINESS] Connection: {0}'.format(connection.id))
     logger.info('[BUSINESS] User: {0}'.format(connection.user.id))
@@ -188,7 +166,7 @@ async def handle_business_message(message: Message, bot: Bot) -> None:
     if connection is None:
         return
 
-    _save_connection(connection)
+    save_connection(db, connection)
     sender_id = message.from_user.id if message.from_user else None
 
     if sender_id == connection.user.id:
