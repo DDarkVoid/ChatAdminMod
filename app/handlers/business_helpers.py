@@ -1,6 +1,7 @@
 """Helper functions for business handlers."""
 
 import logging
+from typing import TypedDict
 
 from aiogram import Bot
 from aiogram.methods import DeleteBusinessMessages
@@ -9,11 +10,18 @@ from aiogram.types import BusinessBotRights, BusinessConnection
 from app.database.database import BusinessConnectionData, Database
 from app.services.antispam_service import AntiSpamService
 
-logger = logging.getLogger(__name__)
+
+class RightsDict(TypedDict):
+    """Type definition for business rights mapping."""
+
+    reply: bool
+    read_messages: bool
+    delete_sent_messages: bool
+    delete_all_messages: bool
 
 
-def get_rights_map(rights: BusinessBotRights | None) -> dict[str, bool]:
-    """Extract rights as a dictionary."""
+def get_rights_map(rights: BusinessBotRights | None) -> RightsDict:
+    """Extract rights as a typed dictionary."""
     if rights is None:
         return {
             'reply': False,
@@ -62,7 +70,7 @@ async def get_connection(
             business_connection_id=connection_id,
         )
     except Exception as connection_error:
-        logger.error(
+        logging.error(
             '[BUSINESS] Failed to get connection: {0}'.format(
                 connection_error,
             ),
@@ -97,22 +105,3 @@ async def delete_message(
             message_ids=[message_id],
         ),
     )
-
-
-async def delete_command(
-    bot: Bot | None,
-    connection_id: str | None,
-    message_id: int,
-) -> None:
-    """Delete command with missing context handling."""
-    if bot is None or connection_id is None:
-        return
-
-    try:
-        await delete_message(bot, connection_id, message_id)
-    except Exception as delete_error:
-        logger.error(
-            '[BUSINESS] Failed to delete command: {0}'.format(
-                delete_error,
-            ),
-        )

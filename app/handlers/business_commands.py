@@ -8,7 +8,7 @@ from aiogram import Bot
 from aiogram.types import Message
 
 from app.database.database import Database
-from app.handlers.business_helpers import delete_command
+from app.handlers.business_helpers import delete_message
 from app.services.mute_service import MuteService
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,25 @@ async def _send_business_text(message: Message, text: str) -> None:
     except Exception as send_error:
         logger.error(
             '[BUSINESS] Failed to send reply: {0}'.format(send_error),
+        )
+
+
+async def _delete_command(
+    bot: Bot | None,
+    connection_id: str | None,
+    message_id: int,
+) -> None:
+    """Safely delete command message."""
+    if bot is None or connection_id is None:
+        return
+
+    try:
+        await delete_message(bot, connection_id, message_id)
+    except Exception as delete_error:
+        logger.error(
+            '[BUSINESS] Failed to delete command: {0}'.format(
+                delete_error,
+            ),
         )
 
 
@@ -117,20 +136,20 @@ class BusinessCommandHandler(object):
         if not duration:
             self._mute_service.mute(conn_id, chat_id)
             logger.info('[MUTE] CHAT {0} muted forever'.format(chat_id))
-            await delete_command(bot, conn_id, message.message_id)
+            await _delete_command(bot, conn_id, message.message_id)
             return
 
         try:
             self._mute_service.mute(conn_id, chat_id, duration)
         except ValueError as mute_error:
             logger.error('[MUTE] {0}'.format(mute_error))
-            await delete_command(bot, conn_id, message.message_id)
+            await _delete_command(bot, conn_id, message.message_id)
             return
 
         logger.info(
             '[MUTE] CHAT {0} muted for {1}'.format(chat_id, duration),
         )
-        await delete_command(bot, conn_id, message.message_id)
+        await _delete_command(bot, conn_id, message.message_id)
 
     async def _unmute(
         self,
@@ -142,7 +161,7 @@ class BusinessCommandHandler(object):
         """Remove mute."""
         self._mute_service.unmute(connection_id, chat_id)
         logger.info('[MUTE] CHAT {0} unmuted'.format(chat_id))
-        await delete_command(bot, connection_id, message.message_id)
+        await _delete_command(bot, connection_id, message.message_id)
 
     async def _mutestatus(
         self,
@@ -160,7 +179,7 @@ class BusinessCommandHandler(object):
             mute_until,
         )
         await _send_business_text(message, response_text)
-        await delete_command(bot, connection_id, message.message_id)
+        await _delete_command(bot, connection_id, message.message_id)
 
     async def _toggle_antispam(
         self,
@@ -179,4 +198,4 @@ class BusinessCommandHandler(object):
             else 'Antispam enabled.\nThreshold: 10 msgs / 5 sec.\nMute: 30 sec.'
         )
         await _send_business_text(message, text)
-        await delete_command(bot, connection_id, message.message_id)
+        await _delete_command(bot, connection_id, message.message_id)
