@@ -1,21 +1,35 @@
+﻿"""Antispam service."""
+
+import time
+from collections import deque
 from typing import Dict, Tuple
 
-class AntiSpamService:
+
+class AntiSpamService(object):
+    """Message frequency checker."""
+
     def __init__(self) -> None:
-        self.storage: Dict[Tuple[str, int, int], int] = {}  # (connection_id, chat_id, user_id) -> last_time
+        """Initialize antispam settings."""
+        self.storage: Dict[Tuple[str, int, int], deque] = {}
         self.threshold = 10
-        self.window = 5  # seconds
+        self.window = 5
 
     def check(self, connection_id: str, chat_id: int, user_id: int) -> bool:
+        """
+        Check if message limit exceeded within the time window.
+
+        Returns True if mute should be applied.
+        """
         key = (connection_id, chat_id, user_id)
-        now = int(__import__('time').time())
+        now = int(time.time())
+
         if key not in self.storage:
-            self.storage[key] = now
-            return False
-        last = self.storage[key]
-        if now - last < self.window:
-            self.storage[key] = now
-            # считаем количество за window, но для упрощения срабатывает сразу
-            return True
-        self.storage[key] = now
-        return False
+            self.storage[key] = deque(maxlen=self.threshold)
+
+        timestamps = self.storage[key]
+        timestamps.append(now)
+
+        while timestamps and timestamps[0] < now - self.window:
+            timestamps.popleft()
+
+        return len(timestamps) >= self.threshold

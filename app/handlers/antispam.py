@@ -1,0 +1,1 @@
+"""Antispam module (temporarily empty)."""
