@@ -30,84 +30,38 @@ def _connection_text(has_missing_rights: bool, language: str | None) -> str:
     """Get connection status text."""
     if has_missing_rights:
         if language == 'en':
-            return (
-                '<b>ChatAdminMod is not fully connected.</b>\n\n'
-                + 'Some required permissions are missing.\n\n'
-                + '<b>Required permissions:</b>\n'
-                + '• Reply to messages\n'
-                + '• Read messages\n'
-                + '• Delete sent messages\n'
-                + '• Delete received messages\n\n'
-                + 'Open the connection settings and enable all required permissions.'
-            )
-        return (
-            '<b>ChatAdminMod подключён не полностью.</b>\n\n'
-            + 'Боту выданы не все необходимые права.\n\n'
-            + '<b>Необходимые права:</b>\n'
-            + '• Ответы на сообщения\n'
-            + '• Чтение сообщений\n'
-            + '• Удаление отправленных сообщений\n'
-            + '• Удаление полученных сообщений\n\n'
-            + 'Открой настройки подключения и выдай все необходимые права.'
-        )
+            return ''.join((
+                '<b>ChatAdminMod is not fully connected.</b>\n\n',
+                'Some required permissions are missing.\n\n',
+                '<b>Required permissions:</b>\n',
+                '• Reply to messages\n',
+                '• Read messages\n',
+                '• Delete sent messages\n',
+                '• Delete received messages\n\n',
+                'Open the connection settings and enable all required permissions.',
+            ))
+        return ''.join((
+            '<b>ChatAdminMod подключён не полностью.</b>\n\n',
+            'Боту выданы не все необходимые права.\n\n',
+            '<b>Необходимые права:</b>\n',
+            '• Ответы на сообщения\n',
+            '• Чтение сообщений\n',
+            '• Удаление отправленных сообщений\n',
+            '• Удаление полученных сообщений\n\n',
+            'Открой настройки подключения и выдай все необходимые права.',
+        ))
 
     if language == 'en':
-        return (
-            '<b>ChatAdminMod connected successfully.</b>\n\n'
-            + 'All required permissions have been granted.\n'
-            + 'The bot is ready to work.'
-        )
-    return (
-        '<b>ChatAdminMod успешно подключён.</b>\n\n'
-        + 'Все необходимые права выданы.\n'
-        + 'Бот готов к работе.'
-    )
-
-
-async def _safe_send_connection_message(
-    bot: Bot,
-    connection: BusinessConnection,
-    text: str,
-) -> None:
-    """Safely send a connection status message."""
-    try:
-        await bot.send_message(
-            chat_id=connection.user_chat_id,
-            text=text,
-            parse_mode='HTML',
-        )
-    except Exception as send_error:
-        logger.error(
-            '[BUSINESS] Failed to send message: {0}'.format(
-                send_error,
-            ),
-        )
-
-
-async def _safe_delete_and_log(
-    bot: Bot,
-    connection_id: str,
-    message_id: int,
-    chat_id: int,
-) -> None:
-    """Safely delete a message and log the action."""
-    try:
-        await delete_message(bot, connection_id, message_id)
-    except Exception as delete_error:
-        logger.error(
-            '[MUTE] Failed to delete message {0}: {1}'.format(
-                message_id,
-                delete_error,
-            ),
-        )
-        return
-
-    logger.info(
-        '[MUTE] Deleted message {0} from chat {1}'.format(
-            message_id,
-            chat_id,
-        ),
-    )
+        return ''.join((
+            '<b>ChatAdminMod connected successfully.</b>\n\n',
+            'All required permissions have been granted.\n',
+            'The bot is ready to work.',
+        ))
+    return ''.join((
+        '<b>ChatAdminMod успешно подключён.</b>\n\n',
+        'Все необходимые права выданы.\n',
+        'Бот готов к работе.',
+    ))
 
 
 async def _process_antispam(
@@ -142,17 +96,22 @@ async def handle_business_connection(
     """Handle a new business connection."""
     save_connection(db, connection)
     missing_rights = get_missing_rights(connection)
-    logger.info('[BUSINESS] Connection: {0}'.format(connection.id))
-    logger.info('[BUSINESS] User: {0}'.format(connection.user.id))
-    logger.info('[BUSINESS] Enabled: {0}'.format(connection.is_enabled))
-    logger.info('[BUSINESS] Missing rights: {0}'.format(missing_rights))
 
     if not connection.is_enabled:
         return
 
     language = db.users.find(connection.user.id)
     text = _connection_text(bool(missing_rights), language)
-    await _safe_send_connection_message(bot, connection, text)
+    try:
+        await bot.send_message(
+            chat_id=connection.user_chat_id,
+            text=text,
+            parse_mode='HTML',
+        )
+    except Exception as send_error:
+        logger.error(
+            '[BUSINESS] Failed to send message: {0}'.format(send_error),
+        )
 
 
 @router.business_message()
@@ -174,12 +133,12 @@ async def handle_business_message(message: Message, bot: Bot) -> None:
         return
 
     if mute_service.is_muted(connection_id, message.chat.id):
-        await _safe_delete_and_log(
-            bot,
-            connection_id,
-            message.message_id,
-            message.chat.id,
-        )
+        try:
+            await delete_message(bot, connection_id, message.message_id)
+        except Exception as delete_error:
+            logger.error(
+                '[MUTE] Failed to delete message: {0}'.format(delete_error),
+            )
         return
 
     spam_detected = is_antispam_message(

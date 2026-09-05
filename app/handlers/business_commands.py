@@ -16,14 +16,7 @@ logger = logging.getLogger(__name__)
 CommandHandler = Callable[[Message, str, int, Bot], Awaitable[None]]
 
 
-def _format_time(minutes: int, seconds: int) -> str:
-    """Format time string."""
-    if minutes:
-        return '{0} min {1} sec'.format(minutes, seconds)
-    return '{0} sec'.format(seconds)
-
-
-def _mute_response(
+def _build_mute_response(
     database: Database,
     connection_id: str,
     chat_id: int,
@@ -41,31 +34,31 @@ def _mute_response(
         return '🔊 Mute has already expired.'
 
     minutes, seconds = divmod(remaining, 60)
-    time_text = _format_time(minutes, seconds)
+    time_text = (
+        '{0} min {1} sec'.format(minutes, seconds)
+        if minutes
+        else '{0} sec'.format(seconds)
+    )
     return '🔇 Chat is muted.\n⏱ Time remaining: {0}'.format(time_text)
 
 
-async def _send_business_text(message: Message, text: str) -> None:
-    """Send reply in business chat."""
-    try:
-        await message.answer(text)
-    except Exception as send_error:
-        logger.error(
-            '[BUSINESS] Failed to send reply: {0}'.format(send_error),
-        )
-
-
-async def _delete_command(
-    bot: Bot | None,
-    connection_id: str | None,
-    message_id: int,
+async def _respond_and_cleanup(
+    message: Message,
+    bot: Bot,
+    connection_id: str,
+    reply_text: str | None = None,
 ) -> None:
-    """Safely delete command message."""
-    if bot is None or connection_id is None:
-        return
+    """Send response if provided and delete command message."""
+    if reply_text:
+        try:
+            await message.answer(reply_text)
+        except Exception as send_error:
+            logger.error(
+                '[BUSINESS] Failed to send reply: {0}'.format(send_error),
+            )
 
     try:
-        await delete_message(bot, connection_id, message_id)
+        await delete_message(bot, connection_id, message.message_id)
     except Exception as delete_error:
         logger.error(
             '[BUSINESS] Failed to delete command: {0}'.format(
@@ -135,21 +128,15 @@ class BusinessCommandHandler(object):
 
         if not duration:
             self._mute_service.mute(conn_id, chat_id)
-            logger.info('[MUTE] CHAT {0} muted forever'.format(chat_id))
-            await _delete_command(bot, conn_id, message.message_id)
+            await _respond_and_cleanup(message, bot, conn_id)
             return
 
         try:
             self._mute_service.mute(conn_id, chat_id, duration)
         except ValueError as mute_error:
             logger.error('[MUTE] {0}'.format(mute_error))
-            await _delete_command(bot, conn_id, message.message_id)
-            return
 
-        logger.info(
-            '[MUTE] CHAT {0} muted for {1}'.format(chat_id, duration),
-        )
-        await _delete_command(bot, conn_id, message.message_id)
+        await _respond_and_cleanup(message, bot, conn_id)
 
     async def _unmute(
         self,
@@ -160,8 +147,7 @@ class BusinessCommandHandler(object):
     ) -> None:
         """Remove mute."""
         self._mute_service.unmute(connection_id, chat_id)
-        logger.info('[MUTE] CHAT {0} unmuted'.format(chat_id))
-        await _delete_command(bot, connection_id, message.message_id)
+        await _respond_and_cleanup(message, bot, connection_id)
 
     async def _mutestatus(
         self,
@@ -172,14 +158,18 @@ class BusinessCommandHandler(object):
     ) -> None:
         """Show mute status."""
         mute_until = self._database.mutes.find(connection_id, chat_id)
-        response_text = _mute_response(
+        response_text = _build_mute_response(
             self._database,
             connection_id,
             chat_id,
             mute_until,
         )
-        await _send_business_text(message, response_text)
-        await _delete_command(bot, connection_id, message.message_id)
+        await _respond_and_cleanup(
+            message,
+            bot,
+            connection_id,
+            response_text,
+        )
 
     async def _toggle_antispam(
         self,
@@ -197,5 +187,4 @@ class BusinessCommandHandler(object):
             if old_state
             else 'Antispam enabled.\nThreshold: 10 msgs / 5 sec.\nMute: 30 sec.'
         )
-        await _send_business_text(message, text)
-        await _delete_command(bot, connection_id, message.message_id)
+        await _respond_and_cleanup(message, bot, connection_id, text)
