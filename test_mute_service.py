@@ -1,8 +1,11 @@
+"""Test script for mute service."""
+
 from app.database.database import Database
 from app.services.mute_service import MuteService
 
 
 def main() -> None:
+    """Run mute service tests."""
     database = Database("test_secretar.db")
     mute_service = MuteService(database)
 
